@@ -1,29 +1,40 @@
-import type { API, Characteristic, DynamicPlatformPlugin, Logging, PlatformAccessory, PlatformConfig, Service } from 'homebridge';
+import {
+  API,
+  DynamicPlatformPlugin,
+  Logging,
+  PlatformAccessory,
+  PlatformConfig,
+  Service,
+  Characteristic,
+  APIEvent,
+} from 'homebridge';
 
-import { ExamplePlatformAccessory } from './platformAccessory.js';
+import { GoveePlatformAccessory } from './platformAccessory.js';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
 
-// This is only required when using Custom Services and Characteristics not support by HomeKit
-import { EveHomeKitTypes } from 'homebridge-lib/EveHomeKitTypes';
+import {
+  startDiscovery as GoveeStartDiscovery,
+  registerScanStart as GoveeRegisterScanStart,
+  registerScanStop as GoveeRegisterScanStop,
+  debug as GoveeDebug,
+  GoveeReading,
+} from 'govee-bt-client';
+import { DeviceContext } from './deviceContext';
 
 /**
  * HomebridgePlatform
  * This class is the main constructor for your plugin, this is where you should
  * parse the user config and discover/register accessories with Homebridge.
  */
-export class ExampleHomebridgePlatform implements DynamicPlatformPlugin {
+export class GoveeHomebridgePlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service;
   public readonly Characteristic: typeof Characteristic;
 
   // this is used to track restored cached accessories
-  public readonly accessories: Map<string, PlatformAccessory> = new Map();
-  public readonly discoveredCacheUUIDs: string[] = [];
+  public readonly accessories: PlatformAccessory[] = [];
 
-  // This is only required when using Custom Services and Characteristics not support by HomeKit
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public readonly CustomServices: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public readonly CustomCharacteristics: any;
+  private platformStatus?: APIEvent;
+  private readonly discoveryCache = new Map();
 
   constructor(
     public readonly log: Logging,
@@ -32,12 +43,7 @@ export class ExampleHomebridgePlatform implements DynamicPlatformPlugin {
   ) {
     this.Service = api.hap.Service;
     this.Characteristic = api.hap.Characteristic;
-
-    // This is only required when using Custom Services and Characteristics not support by HomeKit
-    this.CustomServices = new EveHomeKitTypes(this.api).Services;
-    this.CustomCharacteristics = new EveHomeKitTypes(this.api).Characteristics;
-
-    this.log.debug('Finished initializing platform:', this.config.name);
+    this.log.info('Finished initializing platform:', this.config.name);
 
     // When this event is fired it means Homebridge has restored all cached accessories from disk.
     // Dynamic Platform plugins should only register new accessories after this event was fired,
@@ -46,19 +52,26 @@ export class ExampleHomebridgePlatform implements DynamicPlatformPlugin {
     this.api.on('didFinishLaunching', () => {
       log.debug('Executed didFinishLaunching callback');
       // run the method to discover / register your devices as accessories
+
+      this.platformStatus = APIEvent.DID_FINISH_LAUNCHING;
+
       this.discoverDevices();
+    });
+
+    this.api.on('shutdown', () => {
+      this.platformStatus = APIEvent.SHUTDOWN;
     });
   }
 
   /**
    * This function is invoked when homebridge restores cached accessories from disk at startup.
-   * It should be used to set up event handlers for characteristics and update respective values.
+   * It should be used to setup event handlers for characteristics and update respective values.
    */
   configureAccessory(accessory: PlatformAccessory) {
     this.log.info('Loading accessory from cache:', accessory.displayName);
 
-    // add the restored accessory to the accessories cache, so we can track if it has already been registered
-    this.accessories.set(accessory.UUID, accessory);
+    // add the restored accessory to the accessories cache so we can track if it has already been registered
+    this.accessories.push(accessory);
   }
 
   /**
@@ -67,84 +80,152 @@ export class ExampleHomebridgePlatform implements DynamicPlatformPlugin {
    * must not be registered again to prevent "duplicate UUID" errors.
    */
   discoverDevices() {
-    // EXAMPLE ONLY
-    // A real plugin you would discover accessories from the local network, cloud services
-    // or a user-defined array in the platform config.
-    const exampleDevices = [
-      {
-        exampleUniqueId: 'ABCD',
-        exampleDisplayName: 'Bedroom',
-      },
-      {
-        exampleUniqueId: 'EFGH',
-        exampleDisplayName: 'Kitchen',
-      },
-      {
-        // This is an example of a device which uses a Custom Service
-        exampleUniqueId: 'IJKL',
-        exampleDisplayName: 'Backyard',
-        CustomService: 'AirPressureSensor',
-      },
-    ];
+    this.log.debug('Start discovery');
 
-    // loop over the discovered devices and register each one if it has not already been registered
-    for (const device of exampleDevices) {
-      // generate a unique id for the accessory this should be generated from
-      // something globally unique, but constant, for example, the device serial
-      // number or MAC address
-      const uuid = this.api.hap.uuid.generate(device.exampleUniqueId);
-
-      // see if an accessory with the same uuid has already been registered and restored from
-      // the cached devices we stored in the `configureAccessory` method above
-      const existingAccessory = this.accessories.get(uuid);
-
-      if (existingAccessory) {
-        // the accessory already exists
-        this.log.info('Restoring existing accessory from cache:', existingAccessory.displayName);
-
-        // if you need to update the accessory.context then you should run `api.updatePlatformAccessories`. e.g.:
-        // existingAccessory.context.device = device;
-        // this.api.updatePlatformAccessories([existingAccessory]);
-
-        // create the accessory handler for the restored accessory
-        // this is imported from `platformAccessory.ts`
-        new ExamplePlatformAccessory(this, existingAccessory);
-
-        // it is possible to remove platform accessories at any time using `api.unregisterPlatformAccessories`, e.g.:
-        // remove platform accessories when no longer present
-        // this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [existingAccessory]);
-        // this.log.info('Removing existing accessory from cache:', existingAccessory.displayName);
-      } else {
-        // the accessory does not yet exist, so we need to create it
-        this.log.info('Adding new accessory:', device.exampleDisplayName);
-
-        // create a new accessory
-        const accessory = new this.api.platformAccessory(device.exampleDisplayName, uuid);
-
-        // store a copy of the device object in the `accessory.context`
-        // the `context` property can be used to store any data about the accessory you may need
-        accessory.context.device = device;
-
-        // create the accessory handler for the newly create accessory
-        // this is imported from `platformAccessory.ts`
-        new ExamplePlatformAccessory(this, accessory);
-
-        // link the accessory to your platform
-        this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
-      }
-
-      // push into discoveredCacheUUIDs
-      this.discoveredCacheUUIDs.push(uuid);
+    if (this.config.debug) {
+      GoveeDebug(true);
     }
 
-    // you can also deal with accessories from the cache which are no longer present by removing them from Homebridge
-    // for example, if your plugin logs into a cloud account to retrieve a device list, and a user has previously removed a device
-    // from this cloud account, then this device will no longer be present in the device list but will still be in the Homebridge cache
-    for (const [uuid, accessory] of this.accessories) {
-      if (!this.discoveredCacheUUIDs.includes(uuid)) {
-        this.log.info('Removing existing accessory from cache:', accessory.displayName);
-        this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
-      }
+    GoveeStartDiscovery(this.goveeDiscoveredReading.bind(this));
+    GoveeRegisterScanStart(this.goveeScanStarted.bind(this));
+    GoveeRegisterScanStop(this.goveeScanStopped.bind(this));
+
+    // it is possible to remove platform accessories at any time using `api.unregisterPlatformAccessories`, eg.:
+    // this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+  }
+
+  private goveeDiscoveredReading(reading: GoveeReading) {
+    this.log.debug('Govee reading', reading);
+
+    let deviceUniqueId = reading.uuid;
+    if (reading.model) {
+      deviceUniqueId = reading.model;
     }
+
+    if (!deviceUniqueId) {
+      this.log.error(
+        'device missing unique identifier. Govee reading: ',
+        reading,
+      );
+      return;
+    }
+    
+    //Now check if the device is in the ignore list, if it is, skip working on it, if ignore list is empty do nothing!
+    if (this.config.IgnoreDeviceNames) {
+      this.log.debug('Ignore List filled, will check list!');
+      const displayName = `${this.sanitize(reading.model)}`;
+      const IgnoredDeviceNames = this.config.IgnoreDeviceNames;
+      if (IgnoredDeviceNames.includes(displayName)) {
+        //Device is in the Ignore-List so skip working on it
+        this.log.debug('Device in Ignore List ', displayName, ' skipping the device!');
+        return;
+      }
+    } else {
+      this.log.debug('Ignore List is empty, nothing to check!');
+    }
+ 
+    // discovered devices and register each one if it has not already been registered
+
+    // generate a unique id for the accessory this should be generated from
+    // something globally unique, but constant, for example, the device serial
+    // number or MAC address
+    const uuid = this.api.hap.uuid.generate(deviceUniqueId);
+
+    // see if an accessory with the same uuid has already been registered and restored from
+    // the cached devices we stored in the `configureAccessory` method above
+    const existingAccessory = this.accessories.find(
+      (accessory) => accessory.UUID === uuid,
+    );
+
+    if (this.discoveryCache.has(uuid)) {
+      const cachedInstance = this.discoveryCache.get(
+        uuid,
+      ) as GoveePlatformAccessory;
+      cachedInstance.updateReading(reading);
+      return;
+    }
+
+    if (existingAccessory) {
+      // the accessory already exists
+      this.log.info(
+        'Restoring existing accessory from cache:',
+        existingAccessory.displayName,
+      );
+
+      // if you need to update the accessory.context then you should run `api.updatePlatformAccessories`. eg.:
+      existingAccessory.context.batteryThreshold = this.config.batteryThreshold;
+      existingAccessory.context.humidityOffset = this.config.humidityOffset;
+      this.api.updatePlatformAccessories([existingAccessory]);
+
+      // create the accessory handler for the restored accessory
+      // this is imported from `platformAccessory.ts`
+      const existingInstance = new GoveePlatformAccessory(
+        this,
+        existingAccessory,
+        reading,
+      );
+
+      this.discoveryCache.set(uuid, existingInstance);
+    } else {
+      const displayName = `${this.sanitize(reading.model)}`;
+
+      // the accessory does not yet exist, so we need to create it
+      this.log.info('Adding new accessory:', displayName);
+
+      // create a new accessory
+      const accessory = new this.api.platformAccessory(displayName, uuid);
+
+      // store a copy of the device object in the `accessory.context`
+      // the `context` property can be used to store any data about the accessory you may need
+      const contextDevice: DeviceContext = {
+        address: this.sanitize(reading.address),
+        model: this.sanitize(reading.model),
+        uuid: reading.uuid,
+      };
+      accessory.context.device = contextDevice;
+      accessory.context.batteryThreshold = this.config.batteryThreshold;
+      accessory.context.humidityOffset = this.config.humidityOffset;
+
+      // create the accessory handler for the newly create accessory
+      // this is imported from `platformAccessory.ts`
+      const newInstance = new GoveePlatformAccessory(this, accessory, reading);
+
+      // link the accessory to your platform
+      this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
+        accessory,
+      ]);
+
+      this.discoveryCache.set(uuid, newInstance);
+    }
+  }
+
+  private goveeScanStarted() {
+    this.log.info('Govee Scan Started');
+  }
+
+  private goveeScanStopped() {
+    this.log.info('Govee Scan Stopped');
+
+    if (!this.platformStatus || this.platformStatus === APIEvent.SHUTDOWN) {
+      return;
+    }
+
+    const WAIT_INTERVAL = 5000;
+    // wait, and restart discovery if platform status doesn't change
+
+    setTimeout(() => {
+      if (!this.platformStatus || this.platformStatus === APIEvent.SHUTDOWN) {
+        return;
+      }
+
+      this.log.warn('Govee discovery stopped while Homebridge is running.');
+
+      this.log.info('Restart Discovery');
+      GoveeStartDiscovery(this.goveeDiscoveredReading.bind(this));
+    }, WAIT_INTERVAL);
+  }
+
+  private sanitize(s: string): string {
+    return s.trim().replace('_', '');
   }
 }
