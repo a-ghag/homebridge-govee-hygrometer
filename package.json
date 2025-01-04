@@ -1,22 +1,22 @@
 {
-  "name": "homebridge-plugin-name",
-  "displayName": "Plugin Name",
+  "name": "homebridge-govee-hygrometer",
+  "displayName": "Govee Hygrometer",
   "type": "module",
-  "version": "1.0.0",
-  "private": true,
-  "description": "A short description about what your plugin does.",
+  "version": "0.1.0",
+  "description": "Adds support for Govee Hygrometers in Homebridge",
   "author": "Your Name",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/USERNAME/GITHUB_PROJECT_NAME#readme",
+  "homepage": "https://github.com/a-ghag/homebridge-govee-hygrometer#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/USERNAME/GITHUB_PROJECT_NAME.git"
+    "url": "https://github.com/a-ghag/homebridge-govee-hygrometer.git"
   },
   "bugs": {
-    "url": "https://github.com/USERNAME/GITHUB_PROJECT_NAME/issues"
+    "url": "https://github.com/a-ghag/homebridge-govee-hygrometer/issues"
   },
   "keywords": [
-    "homebridge-plugin"
+    "homebridge-plugin",
+    "homebridge-govee-hygrometer"
   ],
   "main": "dist/index.js",
   "engines": {

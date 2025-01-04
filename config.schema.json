@@ -1,5 +1,5 @@
 {
-  "pluginAlias": "ExampleHomebridgePlugin",
+  "pluginAlias": "HomebridgeGoveeHygrometer",
   "pluginType": "platform",
   "singular": true,
   "strictValidation": false,
