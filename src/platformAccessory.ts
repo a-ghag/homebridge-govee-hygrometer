@@ -4,9 +4,9 @@ import {
   CharacteristicGetCallback,
 } from 'homebridge';
 
-import { GoveeHomebridgePlatform } from './platform';
-import { GoveeReading } from 'govee-bt-client';
-import { DeviceContext } from './deviceContext';
+import { GoveeHomebridgePlatform } from './platform.js';
+import { GoveeReading } from './govee-bt-client/goveeReading.js';
+import { DeviceContext } from './deviceContext.js';
 
 /**
  * Platform Accessory

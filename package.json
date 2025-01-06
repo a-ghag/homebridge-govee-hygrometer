@@ -2,7 +2,7 @@
   "name": "homebridge-govee-hygrometer",
   "displayName": "Govee Hygrometer",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "description": "Adds support for Govee Hygrometers in Homebridge",
   "author": {
     "name": "Abhishek Ghag"
@@ -44,7 +44,7 @@
     "typescript-eslint": "^8.12.2"
   },
   "dependencies": {
-    "govee-bt-client": "^1.0.15",
+    "@abandonware/noble": "^1.9.2-25",
     "homebridge-lib": "^7.1.0"
   }
 }
